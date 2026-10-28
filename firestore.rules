@@ -1,0 +1,35 @@
+rules_version = '2';
+// journals/{uid}: version int 1..1e9, envelope map (encrypted ledger only).
+// Envelope: schema=1, iterations=600000, base64 salt/iv/cipher; no plaintext fields.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function validEnvelope(e) {
+      return e is map && e.keys().hasAll(['schema','iterations','salt','iv','cipher'])
+        && e.keys().hasOnly(['schema','iterations','salt','iv','cipher'])
+        && e.schema == 1 && e.iterations == 600000
+        && e.salt is string && e.salt.size() == 24 && e.salt.matches('^[A-Za-z0-9+/]{22}==$')
+        && e.iv is string && e.iv.size() == 16 && e.iv.matches('^[A-Za-z0-9+/]{16}$')
+        && e.cipher is string && e.cipher.size() >= 24 && e.cipher.size() <= 700000
+        && e.cipher.matches('^[A-Za-z0-9+/]+={0,2}$');
+    }
+    function validJournal(data) {
+      return data.keys().hasAll(['version','envelope']) && data.keys().hasOnly(['version','envelope'])
+        && data.version is int && data.version >= 1 && data.version <= 1000000000
+        && validEnvelope(data.envelope);
+    }
+    match /journals/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create: if isOwner(uid) && validJournal(request.resource.data) && request.resource.data.version == 1;
+      allow update: if isOwner(uid) && validJournal(request.resource.data)
+        && request.resource.data.version == resource.data.version + 1;
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

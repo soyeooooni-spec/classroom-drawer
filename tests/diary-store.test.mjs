@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createJournalStore} from '../dist/diary/store.mjs';
+const envelope={schema:1,iterations:600000,salt:'AAAAAAAAAAAAAAAAAAAAAA==',iv:'AAAAAAAAAAAAAAAA',cipher:'AAAAAAAAAAAAAAAAAAAAAA=='};
+function harness(){let record=null,current='synthetic-a';const store=createJournalStore({uid:()=>current,get:async()=>record,transaction:async(fn)=>fn({read:async()=>record,write:value=>{record=value;}})});return {store,setUid:u=>current=u,getRecord:()=>record};}
+test('store creates, increments revision and rejects stale overwrite',async()=>{const h=harness();assert.equal(await h.store.read('synthetic-a'),null);assert.equal(await h.store.write('synthetic-a',envelope,0),1);assert.equal(await h.store.write('synthetic-a',envelope,1),2);await assert.rejects(()=>h.store.write('synthetic-a',envelope,1),{code:'conflict'});assert.equal(h.getRecord().version,2);});
+test('store rejects access for a different account and unknown fields',async()=>{const h=harness();await assert.rejects(()=>h.store.read('synthetic-b'));await assert.rejects(()=>h.store.write('synthetic-b',envelope,0));await assert.rejects(()=>h.store.write('synthetic-a',{...envelope,title:'synthetic'},0));assert.equal(h.getRecord(),null);});
+test('account change during a read prevents stale record return',async()=>{let current='synthetic-a',release;const store=createJournalStore({uid:()=>current,get:()=>new Promise(r=>release=r),transaction:()=>{}});const request=store.read('synthetic-a');current='synthetic-b';release({version:1,envelope});await assert.rejects(()=>request);});

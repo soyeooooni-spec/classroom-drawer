@@ -1,0 +1,4 @@
+import {initializeFirestore,memoryLocalCache,doc,getDocFromServer,runTransaction} from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
+import {createAuth} from './auth.mjs';
+import {createJournalStore} from './store.mjs';
+export async function createBackend(){const client=createAuth();const db=initializeFirestore(client.app,{localCache:memoryLocalCache()});const ref=uid=>doc(db,'journals',uid);const store=createJournalStore({uid:()=>client.auth.currentUser?.uid||null,get:async uid=>{const snapshot=await getDocFromServer(ref(uid));return snapshot.exists()?snapshot.data():null;},transaction:callback=>runTransaction(db,tx=>callback({read:async uid=>{const snapshot=await tx.get(ref(uid));return snapshot.exists()?snapshot.data():null;},write:(data,uid)=>tx.set(ref(uid),data)}))});return {...store,login:client.login,logout:client.logout,onUser:client.onUser};}
