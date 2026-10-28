@@ -1,0 +1,12 @@
+import {cp,mkdir,writeFile,readdir,readFile,rm} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const root=resolve(import.meta.dirname,'..');
+const out=resolve(root,'site');
+if(out!==resolve(root,'site'))throw Error('Invalid output directory');
+await rm(out,{recursive:true,force:true});
+await mkdir(out,{recursive:true});
+await cp(resolve(root,'dist'),out,{recursive:true});
+await writeFile(resolve(out,'.nojekyll'),'');
+const html=await readFile(resolve(out,'index.html'),'utf8');
+if(!html.includes('교실 서랍'))throw Error('Missing hub');
+console.log('Pages artifact prepared: '+(await readdir(out)).length+' root files');
