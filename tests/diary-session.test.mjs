@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+test('late previous-account read cannot hide the new account form or release its busy state',async()=>{
+ const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{hidden:false,value:'',textContent:'',disabled:false,addEventListener(){},replaceChildren(){}});return elements.get(id);};
+ globalThis.document={getElementById:element,querySelectorAll:()=>[],addEventListener(){}};
+ globalThis.window={addEventListener(){}};
+ let onUser;const pending=new Map();
+ globalThis.__diaryBackend={onUser:fn=>{onUser=fn;},read:uid=>new Promise(resolve=>pending.set(uid,resolve)),login(){},logout(){}};
+ const backendModule='data:text/javascript,'+encodeURIComponent('export async function createBackend(){return globalThis.__diaryBackend;}');
+ let source=await readFile(new URL('../dist/diary/diary.mjs',import.meta.url),'utf8');
+ source=source.replace("from './crypto.mjs'",'from '+JSON.stringify(new URL('../dist/diary/crypto.mjs',import.meta.url).href)).replace("import('./firebase.mjs')",'import('+JSON.stringify(backendModule)+')');
+ await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const a=onUser({uid:'synthetic-account-a'}),b=onUser({uid:'synthetic-account-b'});
+ pending.get('synthetic-account-b')(null);await b;
+ assert.equal(element('unlock-form').hidden,false);
+ pending.get('synthetic-account-a')(null);await a;
+ assert.equal(element('unlock-form').hidden,false);
+ assert.equal(element('auth-error').textContent,'');
+ delete globalThis.document;delete globalThis.window;delete globalThis.__diaryBackend;
+});
